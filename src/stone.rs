@@ -2,13 +2,43 @@ use bevy::prelude::*;
 
 use crate::{assets::OthelloAssets, game_master::GameMaster, settings::Settings, StonePlaced};
 
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Stone {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoneType {
     Black,
     White,
 }
 
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stone {
+    pub stone_type: StoneType,
+}
+
+impl Stone {
+    pub fn new(stone_type: StoneType) -> Self {
+        Self { stone_type }
+    }
+
+    pub fn black() -> Self {
+        Self {
+            stone_type: StoneType::Black,
+        }
+    }
+
+    pub fn white() -> Self {
+        Self {
+            stone_type: StoneType::White,
+        }
+    }
+
+    pub fn reverse(&mut self) {
+        self.stone_type = match self.stone_type {
+            StoneType::Black => StoneType::White,
+            StoneType::White => StoneType::Black,
+        }
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
     pub x: u32,
     pub y: u32,
@@ -28,9 +58,9 @@ impl StoneBundle {
         settings: &Res<Settings>,
         assets: &Res<OthelloAssets>,
     ) -> Self {
-        let color = match stone {
-            Stone::Black => assets.stone_black.clone(),
-            Stone::White => assets.stone_white.clone(),
+        let color = match stone.stone_type {
+            StoneType::Black => assets.stone_black.clone(),
+            StoneType::White => assets.stone_white.clone(),
         };
         Self {
             stone,
@@ -56,11 +86,17 @@ pub fn handle_stone_placed(
     mut commands: Commands,
     mut game_master: ResMut<GameMaster>,
     mut ev_stone_placed: EventReader<StonePlaced>,
+    stones: Query<(Entity, &Position), With<Stone>>,
     settings: Res<Settings>,
     assets: Res<OthelloAssets>,
 ) {
+    if ev_stone_placed.len() != 1 {
+        game_master.stone_placed = false;
+        return;
+    }
+
     for ev in ev_stone_placed.read() {
-        let stone = ev.stone;
+        let placed_stone = ev.stone;
         let position = ev.position;
 
         let reversible_stones = game_master.get_reversible_at(position);
@@ -68,9 +104,25 @@ pub fn handle_stone_placed(
             continue;
         }
 
-        commands.spawn(StoneBundle::new(stone, position, &settings, &assets));
+        commands.spawn(StoneBundle::new(
+            Stone::new(placed_stone),
+            position,
+            &settings,
+            &assets,
+        ));
         for pos in reversible_stones {
-            commands.get_or_spawn(StoneBundle::new(stone, pos, &settings, &assets));
+            for (entity, position) in stones.iter() {
+                if position == &pos {
+                    println!("reverse: {:?} to {:?}", position, placed_stone);
+                    commands.entity(entity).despawn();
+                    commands.spawn(StoneBundle::new(
+                        Stone::new(placed_stone),
+                        pos,
+                        &settings,
+                        &assets,
+                    ));
+                }
+            }
         }
 
         game_master.next_turn();

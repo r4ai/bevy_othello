@@ -1,20 +1,22 @@
-use bevy::prelude::*;
+use bevy::{app::AppExit, prelude::*};
 
-use crate::stone::{Position, Stone};
+use crate::stone::{Position, Stone, StoneType};
 
 #[derive(Resource)]
 pub struct GameMaster {
-    pub turn: Stone,
+    pub turn: StoneType,
     pub stone_placed: bool,
-    pub board: [[Option<Stone>; 8]; 8],
+    pub board: [[Option<StoneType>; 8]; 8],
+    skipped_count: u32,
 }
 
 impl Default for GameMaster {
     fn default() -> Self {
         Self {
-            turn: Stone::Black,
+            turn: StoneType::Black,
             stone_placed: false,
             board: [[None; 8]; 8],
+            skipped_count: 0,
         }
     }
 }
@@ -22,10 +24,15 @@ impl Default for GameMaster {
 impl GameMaster {
     pub fn next_turn(&mut self) {
         self.turn = match self.turn {
-            Stone::Black => Stone::White,
-            Stone::White => Stone::Black,
+            StoneType::Black => StoneType::White,
+            StoneType::White => StoneType::Black,
         };
         self.stone_placed = false;
+        if self.does_exist_placable_pos() {
+            self.skipped_count = 0;
+        } else {
+            self.skipped_count += 1;
+        }
     }
 
     pub fn is_placable_at(&self, pos: Position) -> bool {
@@ -35,6 +42,20 @@ impl GameMaster {
                     continue;
                 }
                 if !self.get_reversible(pos, Direction { x, y }).is_empty() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn does_exist_placable_pos(&self) -> bool {
+        for x in 0..8 {
+            for y in 0..8 {
+                if self.is_placable_at(Position {
+                    x: x.try_into().unwrap(),
+                    y: y.try_into().unwrap(),
+                }) {
                     return true;
                 }
             }
@@ -102,6 +123,13 @@ pub fn board_sync_system(mut game_master: ResMut<GameMaster>, stones: Query<(&St
             eprintln!("Invalid position: {:?} ({:?})", pos, stone);
             continue;
         }
-        game_master.board[pos.y as usize][pos.x as usize] = Some(*stone);
+        game_master.board[pos.y as usize][pos.x as usize] = Some(stone.stone_type);
+    }
+}
+
+pub fn game_end_system(game_master: ResMut<GameMaster>, mut exit: EventWriter<AppExit>) {
+    if game_master.skipped_count >= 1 {
+        println!("Game end");
+        exit.send(AppExit);
     }
 }

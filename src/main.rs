@@ -9,9 +9,9 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
-use game_master::{board_sync_system, GameMaster};
+use game_master::{board_sync_system, game_end_system, GameMaster};
 use settings::Settings;
-use stone::{Position, Stone, StoneBundle};
+use stone::{handle_stone_placed, Position, Stone, StoneBundle, StoneType};
 
 fn main() {
     App::new()
@@ -22,17 +22,14 @@ fn main() {
         .add_systems(PreStartup, setup_assets)
         .add_systems(Startup, setup)
         .add_systems(PostUpdate, board_sync_system)
-        .add_systems(Update, cursor_system)
+        .add_systems(
+            Update,
+            (cursor_system, handle_stone_placed, game_end_system),
+        )
         .run();
 }
 
-fn setup(
-    mut commands: Commands,
-    settings: Res<Settings>,
-    assets: Res<OthelloAssets>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
+fn setup(mut commands: Commands, settings: Res<Settings>, assets: Res<OthelloAssets>) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
 
     // Spawn board
@@ -48,25 +45,25 @@ fn setup(
 
     // Spawn initial stones
     commands.spawn(StoneBundle::new(
-        Stone::Black,
+        Stone::black(),
         Position { x: 3, y: 3 },
         &settings,
         &assets,
     ));
     commands.spawn(StoneBundle::new(
-        Stone::Black,
+        Stone::black(),
         Position { x: 4, y: 4 },
         &settings,
         &assets,
     ));
     commands.spawn(StoneBundle::new(
-        Stone::White,
+        Stone::white(),
         Position { x: 3, y: 4 },
         &settings,
         &assets,
     ));
     commands.spawn(StoneBundle::new(
-        Stone::White,
+        Stone::white(),
         Position { x: 4, y: 3 },
         &settings,
         &assets,
@@ -101,7 +98,7 @@ fn cursor_system(
             match event.button {
                 MouseButton::Left => {
                     if let Some(board_pos) = settings.world_pos_2_board_pos(cursor_pos) {
-                        println!("Left click at {:?}", board_pos);
+                        println!("Left click at {:?} ({:?})", board_pos, game_master.turn);
                         ev_stone_placed.send(StonePlaced {
                             stone: game_master.turn,
                             position: Position {
@@ -125,7 +122,7 @@ fn cursor_system(
 
 #[derive(Event)]
 struct StonePlaced {
-    stone: Stone,
+    stone: StoneType,
     position: Position,
 }
 
